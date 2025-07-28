@@ -1,0 +1,47 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Shared API Gateway Custom Domain Stack
+
+Parameters:
+  Host:
+    Type: String
+    Description: Subdomain (e.g., api)
+  Domain:
+    Type: String
+    Description: Base domain (e.g., example.com)
+  CertArn:
+    Type: String
+    Description: ACM Certificate ARN for the domain
+  ServiceToken:
+    Type: String
+    Description: SNS Topic ARN for custom DNS request
+
+Resources:
+  APIGatewayDomain:
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      DomainName: !Sub "${Host}.${Domain}"
+      RegionalCertificateArn: !Ref CertArn
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      SecurityPolicy: TLS_1_2
+
+  SubAPIDNSEntry:
+    Type: Custom::ShareServiceDNSEntry
+    Properties:
+      ServiceToken: !Ref ServiceToken
+      RecordType: ALIAS
+      Host: !Ref Host
+      Domain: !Ref Domain
+      PrivateTarget: !GetAtt APIGatewayDomain.RegionalDomainName
+      PrivateCNID: !GetAtt APIGatewayDomain.RegionalHostedZoneId
+      PublicTarget: !GetAtt APIGatewayDomain.RegionalDomainName
+      PublicCNID: !GetAtt APIGatewayDomain.RegionalHostedZoneId
+
+Outputs:
+  CustomDomainName:
+    Description: The custom domain name (FQDN)
+    Value: !Sub "${Host}.${Domain}"
+    Export:
+      Name: !Sub "${Host}-CustomDomain"
