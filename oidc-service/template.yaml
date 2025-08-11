@@ -1,0 +1,124 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: oidc-service (home page shows Redis connectivity via secret)
+
+Globals:
+  Api:
+    Cors:
+      AllowMethods: "'GET,OPTIONS'"
+      AllowHeaders: "'content-type'"
+      AllowOrigin: "'*'"
+  Function:
+    Runtime: nodejs18.x
+    Timeout: 10
+    MemorySize: 512
+    CodeUri: ./
+    Architectures: [x86_64]
+    Environment:
+      Variables:
+        SERVICE_NAME: OIDC Service
+        REDIS_CLUSTER_ENDPOINT: { "Fn::ImportValue": {"Fn::Sub": "${RedisStackName}-RedisEndPoint"}}
+        REDIS_CLUSTER_PORT: 6379
+        SECRET_MANAGER_NAME_USERPASS: { "Fn::ImportValue": {"Fn::Sub": "${RedisStackName}-RedisSecret"}}
+    VpcConfig:
+      SecurityGroupIds:
+        - !Ref lambdaSecGroup
+      SubnetIds:
+        - { "Fn::ImportValue": {"Fn::Sub": "${NetworkStack}-PublicSubnetA"}}
+        - { "Fn::ImportValue": {"Fn::Sub": "${NetworkStack}-PublicSubnetB"}}
+        - { "Fn::ImportValue": {"Fn::Sub": "${NetworkStack}-PublicSubnetD"}}
+
+Parameters:
+  StageName: { Type: String, Default: dev }
+  ProjectName: { Type: String, Default: dev-oidc-service }
+  RedisStackName: { Type: String, Default: oneaccessdev-redis-cache }
+  NetworkStack: { Type: String, Default: oneaccess-dev }
+  Host: { Type: String, Default: oidc }
+  Domain: { Type: String, Default: devonapps.ca }
+  CertArn:
+    Type: String
+    Default: arn:aws:acm:ca-central-1:127214191632:certificate/a14f0cdd-4978-4cbd-893b-d68f13ae265c
+
+Metadata:
+  BuildMetadata: &fn-meta
+    BuildMethod: esbuild
+    BuildProperties:
+      Minify: true
+      Target: es2020
+      Sourcemap: true
+      EntryPoints:
+        - main.ts
+  Policies: &fn-policies
+    - Statement:
+      - Sid: SecretsManagerReadOnly
+        Effect: Allow
+        Action: ["secretsmanager:GetSecretValue"]
+        Resource: "*"
+
+Resources:
+  RestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Ref ProjectName
+      StageName: !Ref StageName
+      EndpointConfiguration: REGIONAL
+
+  OIDCFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: OidcServiceFunction
+      Handler: main.mainHandler
+      Events:
+        Home:
+          Type: Api
+          Properties:
+            Path: /
+            Method: GET
+            RestApiId: !Ref RestApi
+      Policies:
+        <<: *fn-policies
+    Metadata:
+      <<: *fn-meta
+
+  lambdaSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Lambda SG
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+      VpcId: {"Fn::ImportValue": { "Fn::Sub": "${NetworkStack}-VpcId"}}
+
+  APIgatewayDomain:
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      DomainName: !Join [".", [!Ref Host, !Ref Domain]]
+      RegionalCertificateArn: !Ref CertArn
+      EndpointConfiguration: { Types: ['REGIONAL'] }
+      SecurityPolicy: TLS_1_2
+
+  APIGatewayDomainMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    Properties:
+      DomainName: !Ref APIgatewayDomain
+      RestApiId: !Ref RestApi
+      Stage: !Ref RestApi.Stage
+
+  SubAPIDNSEntry:
+    Type: 'Custom::ShareServiceDNSEntry'
+    Properties:
+      ServiceToken: 'arn:aws:sns:ca-central-1:308251834553:dnsrequestoneaccessdev'
+      RecordType: ALIAS
+      Host: !Ref Host
+      Domain: !Ref Domain
+      PrivateTarget: { 'Fn::GetAtt': ['APIgatewayDomain', 'RegionalDomainName'] }
+      PrivateCNID: { 'Fn::GetAtt': ['APIgatewayDomain', 'RegionalHostedZoneId'] }
+      PublicTarget: { 'Fn::GetAtt': ['APIgatewayDomain', 'RegionalDomainName'] }
+      PublicCNID: { 'Fn::GetAtt': ['APIgatewayDomain', 'RegionalHostedZoneId'] }
+
+Outputs:
+  DomainName:
+    Description: Custom domain
+    Value: !Sub "${Host}.${Domain}"

@@ -1,0 +1,1 @@
+export { mainHandler as handler } from '../../main';

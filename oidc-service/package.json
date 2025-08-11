@@ -1,0 +1,18 @@
+{
+  "name": "oidc-service",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "sam build",
+    "start": "sam local start-api --warm-containers EAGER",
+    "deploy": "sam deploy --guided"
+  },
+  "dependencies": {
+    "redis": "^4.7.0",
+    "@aws-sdk/client-secrets-manager": "^3.637.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.5",
+    "typescript": "^5.4.0"
+  }
+}
