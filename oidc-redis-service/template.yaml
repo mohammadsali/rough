@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  OIDC Redis Connectivity Check Service
+
+Globals:
+  Function:
+    Timeout: 10
+    MemorySize: 256
+    Runtime: nodejs18.x
+    Architectures:
+      - x86_64
+    VpcConfig:
+      SecurityGroupIds:
+        - !Ref lambdaSecGroup
+      SubnetIds:
+        - { "Fn::ImportValue": {"Fn::Sub": "${NetworkStack}-PublicSubnetA"}}
+        - { "Fn::ImportValue": {"Fn::Sub": "${NetworkStack}-PublicSubnetB"}}
+        - { "Fn::ImportValue": {"Fn::Sub": "${NetworkStack}-PublicSubnetD"}}
+
+Parameters:
+  NetworkStack:
+    Type: String
+  Host:
+    Type: String
+  Domain:
+    Type: String
+  CertArn:
+    Type: String
+  CorsDomainsAllowed:
+    Type: String
+  RedisHost:
+    Type: String
+  RedisPassword:
+    Type: String
+    NoEcho: true
+
+Resources:
+  RestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub "oidc-redis-service"
+      StageName: dev
+      EndpointConfiguration: REGIONAL
+
+  OIDCFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: oidc-redis-check
+      Handler: src/handlers/oidc-redis-check/index.handler
+      Environment:
+        Variables:
+          REDIS_HOST: !Ref RedisHost
+          REDIS_PASSWORD: !Ref RedisPassword
+      Events:
+        RootPath:
+          Type: Api
+          Properties:
+            Path: /
+            Method: GET
+            RestApiId: !Ref RestApi
+
+  lambdaSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Lambda security group
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+      VpcId: {"Fn::ImportValue": { "Fn::Sub": "${NetworkStack}-VpcId"}}
+
+  APIgatewayDomain:
+    Type: 'AWS::ApiGateway::DomainName'
+    Properties:
+      DomainName: !Join [".", [!Ref Host, !Ref Domain]]
+      RegionalCertificateArn: !Ref CertArn
+      EndpointConfiguration:
+        Types:
+          - 'REGIONAL'
+      SecurityPolicy: 'TLS_1_2'
+
+  APIGatewayDomainMapping:
+    Type: 'AWS::ApiGateway::BasePathMapping'
+    Properties:
+      DomainName: !Ref APIgatewayDomain
+      RestApiId: !Ref RestApi
+      Stage: !Ref RestApi.Stage
+
+Outputs:
+  ServiceURL:
+    Value: !Sub "https://${Host}.${Domain}"
+    Description: OIDC Redis Check Service URL

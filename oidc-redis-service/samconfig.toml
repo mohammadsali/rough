@@ -1,0 +1,32 @@
+version = 0.1
+
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "dev-oidc-service"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1gb7vf05jcj4o"
+s3_prefix = "dev-oidc-service"
+region = "ca-central-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+image_repositories = []
+
+[dev]
+[dev.deploy]
+[dev.deploy.parameters]
+stack_name = "dev-oidc-service"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-oneaccess-dev"
+s3_prefix = "dev-oidc-service"
+region = "ca-central-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+image_repositories = []
+parameter_overrides = [
+  "NetworkStack=oneaccess-dev",
+  "Host=oidc",
+  "Domain=devonapps.ca",
+  "CertArn=arn:aws:acm:ca-central-1:127214191632:certificate/a14f0cdd-4978-4cbd-893b-d68f13ae265c",
+  "CorsDomainsAllowed=devonapps.ca",
+  "RedisHost=REPLACE_WITH_REDIS_HOST",
+  "RedisPassword=REPLACE_WITH_REDIS_PASSWORD"
+]
