@@ -1,0 +1,109 @@
+
+# 🧩 Deployment Strategies: Blue-Green vs Multi-Version Stacks (Lambda + API Gateway)
+
+This document compares two AWS deployment strategies using AWS SAM and API Gateway for Lambda-based microservices.
+
+---
+
+## 🔑 Key Traits
+
+| Trait                          | Blue-Green Deployment                        | Multi-Version (Parallel Stacks)           |
+|--------------------------------|----------------------------------------------|--------------------------------------------|
+| # of SAM stacks                | 1                                            | 2                                          |
+| Lambda function(s)            | 1 shared function                            | 2 separate functions                       |
+| Environment variables          | Shared                                       | Isolated per version                       |
+| Lambda aliases used            | ✅ Yes (e.g., blue, green)                   | ❌ No                                       |
+| API Gateway stages             | prod, v2                                     | prod in each stack                         |
+| Base path mapping              | `/` → prod (blue), `/v2` → v2 (green)        | `/` → v1 stack, `/v2` → v2 stack           |
+| Promotion mechanism            | Alias switch (e.g., green → blue)            | Re-map base path or redeploy               |
+| Rollback                       | Instant via alias                            | Requires redeployment or re-mapping        |
+| Version coexistence            | ❌ Only one live version via alias           | ✅ Both versions run concurrently          |
+
+---
+
+## ✅ Pros and Cons
+
+### 🟦 Blue-Green Deployment
+
+**Pros:**
+- Simple rollback via alias switch
+- Lower AWS resource footprint (1 function, 1 stack)
+- Easy to automate in CI/CD
+
+**Cons:**
+- Shared function = shared environment variables
+- Only one version actively runs at a time
+- Slightly harder to test side-by-side
+
+---
+
+### 🟨 Multi-Version Deployment
+
+**Pros:**
+- Full code and environment isolation
+- Both versions are live (ideal for `/` and `/v2` routing)
+- You need different env vars or code structure
+- You expect to support multiple major versions concurrently
+- support long-term coexistence of multiple Lambda versions (e.g., legacy, v2, v3).
+
+**Cons:**
+- Requires maintaining two stacks
+- Slightly higher infrastructure overhead
+- Rollback involves re-mapping or redeploying
+
+---
+
+## 🎯 Use Cases
+
+| Use Case                                      | Recommended Deployment               |
+|----------------------------------------------|--------------------------------------|
+| Controlled rollout and safe rollback         | ✅ Blue-Green Deployment              |
+| Long-lived side-by-side API versions         | ✅ Multi-Version Deployment           |
+| Need for version-specific env/config         | ✅ Multi-Version Deployment           |
+| One-at-a-time deployment flow                | ✅ Blue-Green Deployment              |
+
+---
+
+## 📊 Summary Comparison Table
+
+| Feature                           | Blue-Green Deployment                 | Multi-Version Deployment              |
+|-----------------------------------|--------------------------------------|---------------------------------------|
+| SAM Stacks                        | 1                                    | 2                                     |
+| Lambda Alias Switching            | ✅ Yes                                | ❌ No                                  |
+| ENV Isolation                     | ❌ No                                 | ✅ Yes                                 |
+| Simultaneous Version Availability| ❌ No                                 | ✅ Yes                                 |
+| Simplicity                       | ✅ Simpler                            | ⚠️ Slightly more complex              |
+| Rollback                         | ✅ Easy (alias)                      | ⚠️ Manual (redeploy or remap)         |
+| Path Mapping                     | `/`, `/v2` via stages                | `/`, `/v2` via separate stacks        |
+
+---
+
+## 🚀 Deployment Instructions
+
+### 🟦 Blue-Green Deployment Steps
+
+```bash
+# Initial Setup
+sam deploy --config-env prod     # Deploys to prod with alias blue
+sam deploy --config-env v2       # Deploys to v2 with alias green
+
+# Promote green to blue
+VERSION=$(aws lambda get-alias   --function-name PocONEOnboardingService   --name green   --query 'FunctionVersion' --output text)
+
+aws lambda update-alias   --function-name PocONEOnboardingService   --name blue   --function-version "$VERSION"
+```
+
+---
+
+### 🟨 Multi-Version Deployment Steps
+
+```bash
+# Deploy version 1
+sam deploy --config-env v1
+
+# Deploy version 2
+sam deploy --config-env v2
+
+# (Optional) Remap base path / to point to v2 instead of v1
+# Adjust base path mapping in API Gateway or redeploy with updated route
+```
